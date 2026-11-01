@@ -13,3 +13,4 @@ targets:
     mode: development
     workspace:
       host: https://adb-7405613146189637.17.azuredatabricks.net
+      sync_mode: overwrite
