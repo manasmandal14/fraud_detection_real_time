@@ -1,0 +1,15 @@
+# Declarative Automation Bundle for the real-time credit card fraud detection project
+bundle:
+  name: fraud_detection_real_time
+
+# Load every resource definition (jobs, volumes, ...) from the resources folder
+include:
+  - resources/*.yml
+
+targets:
+  # Development target: resources are prefixed with [dev <user>] and schedules are paused
+  dev:
+    default: true
+    mode: development
+    workspace:
+      host: https://adb-7405613146189637.17.azuredatabricks.net
