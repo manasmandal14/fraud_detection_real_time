@@ -14,3 +14,9 @@ targets:
     workspace:
       host: https://adb-7405613146189637.17.azuredatabricks.net
       sync_mode: overwrite
+  uat:
+    mode: production
+    workspace:
+      host: https://adb-7405608228214157.17.azuredatabricks.net
+      # Shared, user-independent deployment location (moves to the service principal in B7)
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
