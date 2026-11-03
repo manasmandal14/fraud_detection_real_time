@@ -1,6 +1,7 @@
 # Declarative Automation Bundle for the real-time credit card fraud detection project
 bundle:
   name: fraud_detection_real_time
+  engine: direct
 
 # Load every resource definition (jobs, volumes, ...) from the resources folder
 include:
@@ -19,4 +20,4 @@ targets:
     workspace:
       host: https://adb-7405608228214157.17.azuredatabricks.net
       # Shared, user-independent deployment location (moves to the service principal in B7)
-      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
