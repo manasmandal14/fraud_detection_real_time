@@ -40,7 +40,7 @@ targets:
     permissions:
       - level: CAN_MANAGE
         user_name: amit1march95@gmail.com
-      - level: CAN_MANAGE_RUN
+      - level: CAN_RUN
         group_name: grp-fraud-detection-developers
 
 
