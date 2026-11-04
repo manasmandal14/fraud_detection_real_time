@@ -7,6 +7,11 @@ bundle:
 include:
   - resources/*.yml
 
+variables:
+  notification_email:
+    description: Email address that receives job failure notifications
+    default: manasmandal14@gmail.com
+
 targets:
   # Development target: resources are prefixed with [dev <user>] and schedules are paused
   dev:
@@ -16,8 +21,8 @@ targets:
       host: https://adb-7405613146189637.17.azuredatabricks.net
       sync_mode: overwrite
   uat:
+    # UAT target: separate workspace, production-like behavior
     mode: production
     workspace:
       host: https://adb-7405608228214157.17.azuredatabricks.net
-      # Shared, user-independent deployment location (moves to the service principal in B7)
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

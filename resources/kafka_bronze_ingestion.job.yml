@@ -12,7 +12,7 @@ resources:
           min_retry_interval_millis: 60000
       email_notifications:
         on_failure:
-          - manasmandal14@gmail.com
+          - ${var.notification_email}
       tags:
         project: fraud-detection
         layer: bronze
