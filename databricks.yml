@@ -42,6 +42,8 @@ targets:
         user_name: amit1march95@gmail.com
       - level: CAN_RUN
         group_name: grp-fraud-detection-developers
+      - level: CAN_VIEW
+        service_principal_name: 6437fc33-dfdb-443c-b701-884e6a290a45
 
 
 
