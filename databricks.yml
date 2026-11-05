@@ -44,7 +44,5 @@ targets:
         user_name: amit1march95@gmail.com
       - level: CAN_RUN
         group_name: grp-fraud-detection-developers
-
-
-
-
+      - level: CAN_MANAGE
+        group_name: grp-fraud-detection-uat-jobs
