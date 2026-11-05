@@ -20,12 +20,7 @@ dev = [
     "ipykernel",
 ]
 
-[project.scripts]
-main = "Fraud_detection.main:main"
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
 
 [tool.ruff]
 line-length = 120
