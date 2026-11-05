@@ -1,0 +1,49 @@
+# Deploy the Databricks bundle to UAT when changes land on DEVELOP
+name: Deploy bundle to UAT
+
+on:
+  push:
+    branches:
+      - DEVELOP
+  workflow_dispatch: {}          # manual "Run workflow" button (appears once this file is on the default branch)
+
+permissions:
+  id-token: write                # required: lets the job request a GitHub OIDC token
+  contents: read                 # read the repository code
+
+concurrency:
+  group: deploy-uat              # never run two UAT deployments at the same time
+  cancel-in-progress: false
+
+jobs:
+  deploy-uat:
+    name: Validate and deploy to UAT
+    runs-on: ubuntu-latest
+    environment: uat             # must match the federated credential subject (...:environment:uat)
+
+    env:
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_AUTH_TYPE: azure-cli   # Databricks CLI uses the Azure login from the step below
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Sign in to Microsoft Entra ID as the service principal (OIDC, no secret)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true    # the SP has no Azure subscription role, by design
+
+      - name: Install the Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Show the identity used for Databricks
+        run: databricks current-user me
+
+      - name: Validate the bundle
+        run: databricks bundle validate --target uat
+
+      - name: Deploy the bundle
+        run: databricks bundle deploy --target uat
