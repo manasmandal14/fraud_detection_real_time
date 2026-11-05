@@ -24,6 +24,7 @@ jobs:
     env:
       DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
       DATABRICKS_AUTH_TYPE: azure-cli   # Databricks CLI uses the Azure login from the step below
+      DATABRICKS_BUNDLE_TARGET: uat     # inside the bundle folder, every CLI command uses the uat target (not the default dev)
 
     steps:
       - name: Check out the code
