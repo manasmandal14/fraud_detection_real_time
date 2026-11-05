@@ -19,6 +19,7 @@ sync:
     - tests/**
     - fixtures/**
     - .vscode/**
+    - .github/**
     - AGENTS.md
 
 targets:
@@ -34,7 +35,8 @@ targets:
     mode: production
     workspace:
       host: https://adb-7405608228214157.17.azuredatabricks.net
-      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+      root_path: /Workspace/Deployments/${bundle.name}/${bundle.target}
+    # Jobs run as the Entra ID-managed service principal sp-fraud-detection-uat-entra
     run_as:
       service_principal_name: 6437fc33-dfdb-443c-b701-884e6a290a45
     permissions:
@@ -42,8 +44,7 @@ targets:
         user_name: amit1march95@gmail.com
       - level: CAN_RUN
         group_name: grp-fraud-detection-developers
-      - level: CAN_VIEW
-        service_principal_name: 6437fc33-dfdb-443c-b701-884e6a290a45
+
 
 
 
