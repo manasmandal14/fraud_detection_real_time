@@ -1,7 +1,7 @@
 {
-  "CATALOG": "161pmprojectcatalog_uat",
-  "SCHEMA": "uat_catlocation",
-  "KAFKA_TABLE": "kafka_ingestion_bronze",
+  "CATALOG": "myorg_uat",
+  "SCHEMA": "raw",
+  "KAFKA_TABLE": "src_kafka_fraud",
   "CHECKPOINT_VOLUME": "checkpoints",
   "CHECKPOINT_FOLDER": "cc_fraud_kafka_ingestion",
   "KAFKA_TOPIC": "credit_card_transactions",
