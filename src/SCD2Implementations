@@ -1,0 +1,224 @@
+CATALOG = "myorg_dev"
+SCHEMA = "raw"
+# Checkpoint = the stream's memory of the last processed source version (UC volume on serverless)
+CHECKPOINT_VOLUME = f"{CATALOG}.{SCHEMA}.stream_checkpoints"
+CHECKPOINT_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/stream_checkpoints/customer_scd2_iceberg_demo"
+
+CONTROL_TABLE = f"{CATALOG}.{SCHEMA}.stream_load_control"
+FLOW_NAME = "customer_scd2_iceberg_demo"   # identifies this source->target flow in the control table
+CHECKPOINT_BASE = f"/Volumes/{CATALOG}/{SCHEMA}/stream_checkpoints/flows"
+
+dbutils.widgets.dropdown("load_mode", "incremental", ["incremental", "full_refresh"], "Load mode")
+LOAD_MODE = dbutils.widgets.get("load_mode")
+print(f"Load mode: {LOAD_MODE}")
+
+SOURCE_TABLE = f"{CATALOG}.{SCHEMA}.upstream_customer_scd2_iceberg_demo"
+TARGET_TABLE = f"{CATALOG}.{SCHEMA}.target_customer_scd2_iceberg_demo"
+BUSINESS_KEY = "customer_id"
+TRACKED_COLS = ["customer_name", "city"]
+DATA_COLS = ["customer_id", "customer_name", "city", "valid_from", "valid_to", "is_current"]
+
+
+
+FULL_REFRESH_QUERY = """
+SELECT customer_id, customer_name, city, valid_from, valid_to, is_current
+FROM source_snapshot
+
+"""
+
+
+import uuid
+from datetime import datetime, timezone
+
+
+def latest_version(table):
+    """Latest commit version of a table (works for Iceberg v3 and Delta)."""
+    return spark.sql(f"DESCRIBE HISTORY {table} LIMIT 1").first()["version"]
+
+def full_refresh():
+    # 1. Rollback point: target version before we touch it
+    target_before = latest_version(TARGET_TABLE)
+    # 2. Pin the source version we copy from
+    n = latest_version(SOURCE_TABLE)
+    # 3. Expose the pinned source as `source_snapshot` and run your query on it
+    df =spark.sql(f"SELECT * FROM {SOURCE_TABLE} VERSION AS OF {n}")
+    df.createOrReplaceTempView("source_snapshot")
+    result = spark.sql(FULL_REFRESH_QUERY)
+    result.select(*DATA_COLS).write.mode("overwrite").insertInto(TARGET_TABLE)
+    target_after = latest_version(TARGET_TABLE)
+    # 4. New checkpoint path: UTC timestamp + source version
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    checkpoint_path = f"{CHECKPOINT_BASE}/{FLOW_NAME}/fr_{ts}_v{n}"
+    spark.sql(f"""
+      MERGE INTO {CONTROL_TABLE} AS c
+      USING (
+        SELECT :flow AS merge_key
+        UNION ALL
+        SELECT NULL AS merge_key
+      ) AS s
+      ON c.flow_name = s.merge_key AND c.status = 'active'
+      WHEN MATCHED THEN UPDATE SET
+        c.status = 'retired',
+        c.retired_at = current_timestamp()
+      WHEN NOT MATCHED AND s.merge_key IS NULL THEN INSERT
+        (flow_name, run_id, checkpoint_path, source_table, target_table, source_start_version,
+         target_version_before, target_version_after, status, created_at, created_by, retired_at)
+        VALUES (:flow, :run_id, :ckpt, :src, :tgt, :n, :tb, :ta,
+                'active', current_timestamp(), current_user(), NULL)
+    """, args={"flow": FLOW_NAME, "run_id": str(uuid.uuid4()), "ckpt": checkpoint_path,
+               "src": SOURCE_TABLE, "tgt": TARGET_TABLE, "n": n,
+               "tb": target_before, "ta": target_after})
+    print(f"FULL REFRESH done: source v{n} -> target v{target_before}->v{target_after}")
+    print(f"Active checkpoint: {checkpoint_path}")
+    return checkpoint_path, n
+
+
+
+
+%sql
+select * from myorg_dev.raw.stream_load_control
+
+
+
+def upstream_scd2_change(customer_id, customer_name, city, change_ts):
+    """Simulates the upstream job: close the current row and insert a new version in ONE commit.
+    Values are passed as named parameters (:id, :name, :city, :ts), not concatenated into the SQL."""
+    spark.sql(
+        f"""
+        MERGE INTO {SOURCE_TABLE} AS t
+        USING (
+          SELECT :id AS merge_key, :id AS customer_id, :name AS customer_name, :city AS city,
+                 CAST(:ts AS TIMESTAMP) AS change_ts
+          UNION ALL
+          SELECT NULL, :id, :name, :city, CAST(:ts AS TIMESTAMP)
+        ) AS s
+        ON t.customer_id = s.merge_key AND t.is_current = true
+        WHEN MATCHED THEN UPDATE SET
+          t.valid_to = s.change_ts,
+          t.is_current = false
+        WHEN NOT MATCHED AND s.merge_key IS NULL THEN INSERT
+          (customer_id, customer_name, city, valid_from, valid_to, is_current)
+          VALUES (s.customer_id, s.customer_name, s.city, s.change_ts, NULL, true)
+        """,
+        args={"id": customer_id, "name": customer_name, "city": city, "ts": change_ts},
+    )
+
+
+from functools import reduce
+from pyspark.sql import functions as F
+from pyspark.sql.window import Window
+
+
+def upsert_scd2_batch(batch_df, batch_id):
+    session = batch_df.sparkSession
+
+    # 4.1 Keep the state AFTER each change (drop update_preimage = old values)
+    changes = batch_df.filter(F.col("_change_type").isin("insert", "update_postimage"))
+
+    # 4.2 Latest row per key
+    w = Window.partitionBy(BUSINESS_KEY).orderBy(
+        F.col("_commit_version").desc(),
+        F.col("is_current").desc(),
+        F.col("valid_from").desc(),
+    )
+    latest = (
+        changes.withColumn("rn", F.row_number().over(w))
+        .filter("rn = 1")
+        .select(*DATA_COLS)
+    )
+
+    # 4.3 Compare with target's current row, keep only real changes
+    target_current = (
+        session.table(TARGET_TABLE)
+        .filter("is_current = true")
+        .select(
+            BUSINESS_KEY,
+            F.lit(True).alias("t_exists"),
+            *[F.col(c).alias(f"t_{c}") for c in TRACKED_COLS],
+        )
+    )
+    attr_changed = reduce(
+        lambda a, b: a | b,
+        [~F.col(c).eqNullSafe(F.col(f"t_{c}")) for c in TRACKED_COLS],
+    )
+    t_exists = F.col("t_exists").isNotNull()
+    s_current = F.col("is_current")
+
+    changed = (
+        latest.join(target_current, BUSINESS_KEY, "left")
+        .filter((~t_exists & s_current) | (t_exists & (~s_current | attr_changed)))
+        .select(*DATA_COLS)
+    )
+
+    # 4.4 Staged updates: merge_key = key -> expire, merge_key = NULL -> insert
+    staged = changed.withColumn("merge_key", F.col(BUSINESS_KEY)).unionByName(
+        changed.filter("is_current").withColumn("merge_key", F.lit(None).cast("int"))
+    )
+    staged.createOrReplaceTempView("staged_updates")
+
+    # 4.5 One MERGE applies SCD2 to the Iceberg target
+    session.sql(f"""
+        MERGE INTO {TARGET_TABLE} AS t
+        USING staged_updates AS s
+        ON t.{BUSINESS_KEY} = s.merge_key AND t.is_current = true
+        WHEN MATCHED THEN UPDATE SET
+          t.is_current = false,
+          t.valid_to = CASE WHEN s.is_current THEN s.valid_from ELSE s.valid_to END
+        WHEN NOT MATCHED AND s.merge_key IS NULL THEN INSERT
+          (customer_id, customer_name, city, valid_from, valid_to, is_current)
+          VALUES (s.customer_id, s.customer_name, s.city, s.valid_from, s.valid_to, true)
+    """)
+
+
+
+def get_active_control():
+    """Returns the single active control row for this flow. Fails loudly if there is none or more than one."""
+    rows = spark.sql(f"""
+        SELECT checkpoint_path, source_start_version, source_table, target_table
+        FROM {CONTROL_TABLE}
+        WHERE flow_name = :flow AND status = 'active'
+    """, args={"flow": FLOW_NAME}).collect()
+
+    if len(rows) == 0:
+        raise RuntimeError(f"No active checkpoint for flow '{FLOW_NAME}'. Run with load_mode = full_refresh first.")
+    if len(rows) > 1:
+        raise RuntimeError(f"{len(rows)} active rows for flow '{FLOW_NAME}' in {CONTROL_TABLE}. Fix the control table first.")
+
+    row = rows[0]
+    if row["source_table"] != SOURCE_TABLE or row["target_table"] != TARGET_TABLE:
+        raise RuntimeError(f"Control row is for {row['source_table']} -> {row['target_table']}, "
+                           f"but config is {SOURCE_TABLE} -> {TARGET_TABLE}.")
+    return row["checkpoint_path"], row["source_start_version"]
+
+
+def run_incremental_load():
+    checkpoint_path, start_version = get_active_control()
+    print(f"Incremental run | checkpoint: {checkpoint_path} | startingVersion: {start_version}")
+
+    source_changes = (
+        spark.readStream
+        .option("readChangeFeed", "true")
+        .option("startingVersion", start_version)   # used only the first time this checkpoint runs
+        .table(SOURCE_TABLE)
+    )
+
+    query = (
+        source_changes.writeStream
+        .foreachBatch(upsert_scd2_batch)
+        .option("checkpointLocation", checkpoint_path)
+        .trigger(availableNow=True)
+        .start()
+    )
+    query.awaitTermination()
+
+    rows = sum(p["sources"][0]["numInputRows"] for p in query.recentProgress)
+    print(f"Change rows read this run: {rows}")
+
+
+
+if LOAD_MODE == "full_refresh":
+    full_refresh()          # overwrite target + new active checkpoint row
+
+run_incremental_load()      # always runs: after a refresh it starts the new checkpoint
+
+display(spark.table(TARGET_TABLE).orderBy("customer_id", "valid_from"))
