@@ -1,0 +1,25 @@
+resources:
+  jobs:
+    autoloader_ingestion_job:
+      name: autoloader_ingestion
+      email_notifications:
+        on_success:
+          - ${var.notification_email}
+        on_failure:
+          - ${var.notification_email}
+      schedule:
+        quartz_cron_expression: 0 0 2 * * ?
+        timezone_id: Asia/Calcutta
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: run_autoloader_ingestion
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.autoloader_ingestion.id}
+          max_retries: 1
+          min_retry_interval_millis: 60000
+      tags:
+        env: ${bundle.target}
+        project: fraud-detection
+      queue:
+        enabled: true
+      performance_target: PERFORMANCE_OPTIMIZED

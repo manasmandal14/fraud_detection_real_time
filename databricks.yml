@@ -28,21 +28,19 @@ targets:
     default: true
     mode: development
     workspace:
-      host: https://adb-7405613146189637.17.azuredatabricks.net
+      host: https://adb-7405610744303511.11.azuredatabricks.net
       sync_mode: overwrite
   uat:
     # UAT target: separate workspace, production-like behavior
     mode: production
     workspace:
-      host: https://adb-7405608228214157.17.azuredatabricks.net
+      host: https://adb-7405604444833061.1.azuredatabricks.net
       root_path: /Workspace/Deployments/${bundle.name}/${bundle.target}
-    # Jobs run as the Entra ID-managed service principal sp-fraud-detection-uat-entra
+    # Jobs run as the Entra ID-managed service principal sp-prod-jobs
     run_as:
-      service_principal_name: 6437fc33-dfdb-443c-b701-884e6a290a45
+      service_principal_name: ${var.job_run_as_sp}
     permissions:
       - level: CAN_MANAGE
-        user_name: amit1march95@gmail.com
-      - level: CAN_RUN
-        group_name: grp-fraud-detection-developers
-      - level: CAN_MANAGE
-        group_name: grp-fraud-detection-uat-jobs
+        user_name: sumitmandal980@gmail.com
+      - level: CAN_VIEW
+        service_principal_name: ${var.job_run_as_sp}

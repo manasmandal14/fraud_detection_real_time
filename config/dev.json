@@ -11,6 +11,6 @@
   "STARTING_OFFSETS": "earliest",
   "SECRET_SCOPE": "kv-fraud-detection",
   "QUARANTINE_TABLE": "silver_kafka_fraud_quarantine",
-"QUARANTINE_CHECKPOINT_FOLDER": "silver_fraud_kafka_quarantine"
+  "QUARANTINE_CHECKPOINT_FOLDER": "silver_fraud_kafka_quarantine"
 }
 
