@@ -1,0 +1,90 @@
+CATALOG = "myorg_dev"
+SCHEMA = "raw"
+
+SOURCE_TABLE = f"{CATALOG}.{SCHEMA}.upstream_customer_scd2_iceberg_demo"
+TARGET_TABLE = f"{CATALOG}.{SCHEMA}.target_customer_scd2_iceberg_demo"
+
+# Checkpoint = the stream's memory of the last processed source version (UC volume on serverless)
+CHECKPOINT_VOLUME = f"{CATALOG}.{SCHEMA}.stream_checkpoints"
+
+spark.sql(f"CREATE VOLUME IF NOT EXISTS {CHECKPOINT_VOLUME}")
+
+# Automatic change data feed on Iceberg v3 needs Databricks Runtime 19+
+display(spark.sql("SELECT current_version() AS runtime_info, current_catalog() AS catalog, current_schema() AS schema"))
+print("Spark version:", spark.version)
+
+# Safe to re-run: IF NOT EXISTS never drops or replaces an existing table,
+# so data, version history and the stream checkpoint position are preserved.
+already_exists = spark.catalog.tableExists(SOURCE_TABLE)
+
+spark.sql(f"""
+  CREATE TABLE IF NOT EXISTS {SOURCE_TABLE} (
+    customer_id   INT,
+    customer_name STRING,
+    city          STRING,
+    valid_from    TIMESTAMP,
+    valid_to      TIMESTAMP,
+    is_current    BOOLEAN
+  )
+  USING iceberg
+  TBLPROPERTIES ('format-version' = 3)
+""")
+
+print(f"{SOURCE_TABLE}: " + ("already existed, left unchanged" if already_exists else "created"))
+
+
+already_exists = spark.catalog.tableExists(TARGET_TABLE)
+
+spark.sql(f"""
+  CREATE TABLE IF NOT EXISTS {TARGET_TABLE} (
+    customer_id   INT,
+    customer_name STRING,
+    city          STRING,
+    valid_from    TIMESTAMP,
+    valid_to      TIMESTAMP,
+    is_current    BOOLEAN
+  )
+  USING iceberg
+  TBLPROPERTIES ('format-version' = 3)
+""")
+print(f"{TARGET_TABLE}: " + ("already existed, left unchanged" if already_exists else "created"))
+
+CONTROL_TABLE = f"{CATALOG}.{SCHEMA}.stream_load_control"
+
+already_exists = spark.catalog.tableExists(CONTROL_TABLE)
+
+spark.sql(f"""
+  CREATE TABLE IF NOT EXISTS {CONTROL_TABLE} (
+    flow_name              STRING    NOT NULL,  -- one row set per source->target flow
+    run_id                 STRING    NOT NULL,  -- unique id of the full refresh
+    checkpoint_path        STRING    NOT NULL,  -- checkpoint used by incremental runs while active
+    source_table           STRING    NOT NULL,
+    target_table           STRING    NOT NULL,
+    source_start_version   BIGINT    NOT NULL,  -- source version copied by the refresh = startingVersion
+    target_version_before  BIGINT,              -- target version before overwrite (rollback point)
+    target_version_after   BIGINT,              -- target version right after overwrite
+    status                 STRING    NOT NULL,  -- 'active' or 'retired'
+    created_at             TIMESTAMP NOT NULL,  -- UTC
+    created_by             STRING    NOT NULL,
+    retired_at             TIMESTAMP
+  )
+  USING DELTA
+  COMMENT 'Active checkpoint per streaming flow; one row per full refresh'
+""")
+
+if not already_exists:
+    spark.sql(f"""
+      ALTER TABLE {CONTROL_TABLE}
+      ADD CONSTRAINT status_valid CHECK (status IN ('active', 'retired'))
+    """)
+
+print(f"{CONTROL_TABLE}: " + ("already existed, left unchanged" if already_exists else "created"))
+
+try:
+    spark.sql(f"""
+      INSERT INTO {CONTROL_TABLE} VALUES
+      ('test', 'x', '/tmp', 's', 't', 0, NULL, NULL, 'bad_status', current_timestamp(), 'me', NULL)
+    """)
+    print("FAIL: invalid status was accepted")
+except Exception as e:
+    print("PASS: invalid status rejected ->", type(e).__name__)
