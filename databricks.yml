@@ -44,3 +44,5 @@ targets:
         user_name: sumitmandal980@gmail.com
       - level: CAN_VIEW
         service_principal_name: ${var.job_run_as_sp}
+      - level: CAN_MANAGE
+        service_principal_name: ${var.cicd_deploy_sp}

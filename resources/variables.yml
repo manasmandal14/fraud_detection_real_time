@@ -10,6 +10,10 @@ variables:
     description: Service principal that runs jobs; resolved to its application ID at deploy time
     lookup:
       service_principal: sp-prod-jobs
+  cicd_deploy_sp:
+    description: Service principal that deploys the bundle through CI/CD; resolved to its application ID at deploy time
+    lookup:
+      service_principal: sp-cicd-deploy
 
 # Values per environment (overrides the defaults above)
 targets:
