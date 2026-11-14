@@ -1,0 +1,24 @@
+resources:
+  pipelines:
+    autoloader_ingestion:
+      name: autoloader_ingestion
+      catalog: ${var.catalog}
+      schema: raw
+      serverless: true
+      channel: CURRENT
+      continuous: false
+      root_path: ../src/ingestion/autoloader_ingestion
+
+      libraries:
+        - glob:
+            include: ../src/ingestion/autoloader_ingestion/raw_layer/**
+        - glob:
+            include: ../src/ingestion/autoloader_ingestion/silver_layer/**
+
+      configuration:
+        env: ${bundle.target}
+        source_path: ${var.watchlist_source_path}
+
+      tags:
+        project: fraud-detection
+        env: ${bundle.target}

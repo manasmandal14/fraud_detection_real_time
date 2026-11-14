@@ -1,0 +1,32 @@
+resources:
+  jobs:
+    fraud_kafka_ingestion:
+      name: fraud_kafka_ingestion_${bundle.target}
+      email_notifications:
+        on_success:
+          - ${var.notification_email}
+        on_failure:
+          - ${var.notification_email}
+      tags:
+        project: fraud-detection
+        env: ${bundle.target}
+      tasks:
+        - task_key: kafka_to_bronze
+          notebook_task:
+            notebook_path: ../src/ingestion/kafka_to_bronze.py.ipynb
+            source: WORKSPACE
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
+        - task_key: kafka_src_silver_table
+          depends_on:
+            - task_key: kafka_to_bronze
+          notebook_task:
+            notebook_path: ../src/transformations/kafta_tbl_bronze_to_silver.py.ipynb
+            source: WORKSPACE
+      queue:
+        enabled: true
+      parameters:
+        - name: env
+          default: ${bundle.target}
+      performance_target: PERFORMANCE_OPTIMIZED

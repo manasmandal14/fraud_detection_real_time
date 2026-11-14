@@ -44,7 +44,10 @@ jobs:
         run: databricks current-user me
 
       - name: Validate the bundle
-        run: databricks bundle validate --target uat
+        run: databricks bundle validate --strict --target uat
 
       - name: Deploy the bundle
         run: databricks bundle deploy --target uat
+        
+      - name: Show deployed resources
+        run: databricks bundle summary --target uat

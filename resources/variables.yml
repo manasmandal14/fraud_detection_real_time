@@ -1,0 +1,23 @@
+variables:
+  catalog:
+    description: Unity Catalog catalog for the current environment
+    default: myorg_dev
+
+  watchlist_source_path:
+    description: Auto Loader landing folder for fraud watchlist files
+    default: /Volumes/myorg_dev/raw/raw_data/fraud_watch_list_files/
+  job_run_as_sp:
+    description: Service principal that runs jobs; resolved to its application ID at deploy time
+    lookup:
+      service_principal: sp-prod-jobs
+
+# Values per environment (overrides the defaults above)
+targets:
+  dev:
+    variables:
+      catalog: myorg_dev
+      watchlist_source_path: /Volumes/myorg_dev/raw/raw_data/fraud_watch_list_files/
+  uat:
+    variables:
+      catalog: myorg_uat
+      watchlist_source_path: /Volumes/myorg_uat/raw/raw_data/fraud_watch_list_files/
